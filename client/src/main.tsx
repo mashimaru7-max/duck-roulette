@@ -36,6 +36,23 @@ function Wheel({ spin, result }: { spin: boolean; result: number | null }) {
   const ref = useRef<HTMLCanvasElement>(null),
     start = useRef(0),
     raf = useRef(0);
+  const clamp = (value: number, min = 0, max = 1) =>
+    Math.min(max, Math.max(min, value));
+  const smooth = (value: number) => {
+    const x = clamp(value);
+    return x * x * (3 - 2 * x);
+  };
+  const spinAngle = (seconds: number, maxSpeed: number, accelerate: number, cruise: number, stop: number) => {
+    if (seconds <= accelerate)
+      return (maxSpeed * seconds * seconds) / (2 * accelerate);
+    const accelerated = (maxSpeed * accelerate) / 2;
+    if (seconds <= cruise) return accelerated + maxSpeed * (seconds - accelerate);
+    const duration = stop - cruise;
+    const elapsed = Math.min(duration, seconds - cruise);
+    const u = elapsed / duration;
+    const decelerationDistance = maxSpeed * duration * (u - u * u + (u * u * u) / 3);
+    return accelerated + maxSpeed * (cruise - accelerate) + decelerationDistance;
+  };
   const draw = useCallback(
     (time: number) => {
       const canvas = ref.current;
@@ -51,17 +68,35 @@ function Wheel({ spin, result }: { spin: boolean; result: number | null }) {
       c.clearRect(0, 0, size, size);
       const mid = size / 2,
         R = size * 0.46,
-        t = spin ? Math.min(1, (time - start.current) / 6000) : 1,
-        ease = 1 - Math.pow(1 - t, 3),
-        wheel = spin ? (time - start.current) * 0.0026 * (1 - ease * 0.82) : 0;
+        elapsed = spin ? Math.min(6.5, (time - start.current) / 1000) : 6.5,
+        progress = elapsed / 6.5,
+        wheel = spin ? spinAngle(elapsed, 4.7, 0.55, 3.15, 6.5) : 0,
+        targetSector = result
+          ? -Math.PI / 2 + ((result - 1) * Math.PI) / 6 + Math.PI / 12
+          : -Math.PI / 2;
+      const winningGlow = result ? (spin ? smooth((elapsed - 5.65) / 0.65) : 1) : 0;
       c.save();
       c.translate(mid, mid);
+      const wood = c.createRadialGradient(0, 0, R * 0.4, 0, 0, R);
+      wood.addColorStop(0, "#8b5027");
+      wood.addColorStop(0.72, "#5e2d13");
+      wood.addColorStop(1, "#2f160b");
       c.beginPath();
       c.arc(0, 0, R, 0, Math.PI * 2);
-      c.fillStyle = "#6b3516";
+      c.fillStyle = wood;
       c.fill();
       c.lineWidth = size * 0.028;
-      c.strokeStyle = "#d99a25";
+      c.strokeStyle = "#dca128";
+      c.stroke();
+      c.beginPath();
+      c.arc(0, 0, R * 0.9, 0, Math.PI * 2);
+      c.lineWidth = size * 0.018;
+      c.strokeStyle = "#f5cf68";
+      c.stroke();
+      c.beginPath();
+      c.arc(0, 0, R * 0.86, 0, Math.PI * 2);
+      c.lineWidth = size * 0.035;
+      c.strokeStyle = "#32180e";
       c.stroke();
       c.rotate(wheel);
       for (let i = 0; i < 12; i++) {
@@ -72,6 +107,13 @@ function Wheel({ spin, result }: { spin: boolean; result: number | null }) {
         c.closePath();
         c.fillStyle = i % 2 ? "#17191f" : "#d92f31";
         c.fill();
+        if (result === i + 1 && winningGlow > 0) {
+          c.save();
+          c.globalAlpha = 0.22 + winningGlow * 0.48;
+          c.fillStyle = "#ffe264";
+          c.fill();
+          c.restore();
+        }
         c.strokeStyle = "#f4c65b";
         c.lineWidth = 2;
         c.stroke();
@@ -85,46 +127,95 @@ function Wheel({ spin, result }: { spin: boolean; result: number | null }) {
         c.fillText(String(i + 1), 0, size * 0.02);
         c.restore();
       }
+      for (let i = 0; i < 12; i++) {
+        const pinAngle = -Math.PI / 2 + (i * Math.PI) / 6;
+        c.beginPath();
+        c.arc(Math.cos(pinAngle) * R * 0.87, Math.sin(pinAngle) * R * 0.87, size * 0.008, 0, Math.PI * 2);
+        c.fillStyle = "#ffe18a";
+        c.shadowColor = "#8f520d";
+        c.shadowBlur = 3;
+        c.fill();
+        c.shadowBlur = 0;
+      }
       c.beginPath();
       c.arc(0, 0, R * 0.35, 0, Math.PI * 2);
-      c.fillStyle = "#7b451f";
+      const hub = c.createRadialGradient(-R * 0.08, -R * 0.1, 0, 0, 0, R * 0.35);
+      hub.addColorStop(0, "#b67836");
+      hub.addColorStop(1, "#54250f");
+      c.fillStyle = hub;
       c.fill();
       c.strokeStyle = "#f7c85b";
       c.lineWidth = 5;
       c.stroke();
       c.beginPath();
       c.arc(0, 0, R * 0.13, 0, Math.PI * 2);
-      c.fillStyle = "#f4b52c";
+      const gold = c.createRadialGradient(-R * 0.04, -R * 0.05, 0, 0, 0, R * 0.13);
+      gold.addColorStop(0, "#fff0a4");
+      gold.addColorStop(0.45, "#f7bd34");
+      gold.addColorStop(1, "#9b5909");
+      c.fillStyle = gold;
       c.fill();
       c.restore();
-      let ballAngle = -Math.PI / 2;
+      let ballAngle = targetSector;
+      let radius = R * 0.72;
       if (spin) {
-        const outer = -((time - start.current) * 0.0055 * (1 - ease * 0.8));
-        const target = result
-          ? -Math.PI / 2 + ((result - 1) * Math.PI) / 6 + Math.PI / 12 + wheel
-          : 0;
-        ballAngle =
-          t < 0.87
-            ? outer
-            : outer + (target - outer) * Math.min(1, (t - 0.87) / 0.13);
-      } else if (result)
-        ballAngle = -Math.PI / 2 + ((result - 1) * Math.PI) / 6 + Math.PI / 12;
-      const radius =
-        R * (spin ? 0.93 - 0.2 * Math.max(0, (t - 0.55) / 0.45) : 0.73);
+        const freeBallAngle = -spinAngle(elapsed, 10.8, 0.38, 3.05, 5.75);
+        const absoluteTarget = targetSector + wheel;
+        const targetBehind =
+          absoluteTarget -
+          Math.ceil((absoluteTarget - freeBallAngle) / (Math.PI * 2)) * Math.PI * 2;
+        const settle = smooth((elapsed - 5.35) / 1.15);
+        ballAngle = freeBallAngle + (targetBehind - freeBallAngle) * settle;
+        const drop = smooth((elapsed - 3.15) / 2.15);
+        const bounceWindow = clamp((elapsed - 4.15) / 1.55) * (1 - smooth((elapsed - 5.35) / 0.75));
+        const bounce = Math.sin((elapsed - 4.15) * 22) * R * 0.018 * bounceWindow;
+        radius = R * (0.935 - drop * 0.215) + bounce;
+      }
+      const ballX = mid + Math.cos(ballAngle) * radius;
+      const ballY = mid + Math.sin(ballAngle) * radius;
       c.beginPath();
-      c.arc(
-        mid + Math.cos(ballAngle) * radius,
-        mid + Math.sin(ballAngle) * radius,
-        size * 0.022,
+      c.ellipse(
+        ballX + size * 0.008,
+        ballY + size * 0.013,
+        size * 0.024,
+        size * 0.014,
+        0,
         0,
         Math.PI * 2,
       );
-      c.fillStyle = "white";
-      c.shadowColor = "#0008";
-      c.shadowBlur = 7;
+      c.fillStyle = "#0005";
+      c.fill();
+      c.beginPath();
+      c.arc(ballX, ballY, size * 0.023, 0, Math.PI * 2);
+      const pearl = c.createRadialGradient(
+        ballX - size * 0.008,
+        ballY - size * 0.009,
+        1,
+        ballX,
+        ballY,
+        size * 0.023,
+      );
+      pearl.addColorStop(0, "#ffffff");
+      pearl.addColorStop(0.55, "#f4f6f8");
+      pearl.addColorStop(1, "#9ca5af");
+      c.fillStyle = pearl;
+      c.shadowColor = "#0009";
+      c.shadowBlur = 5;
       c.fill();
       c.shadowBlur = 0;
-      if (spin && t < 1) raf.current = requestAnimationFrame(draw);
+      c.save();
+      c.translate(mid, mid);
+      c.beginPath();
+      c.moveTo(0, -R * 1.01);
+      c.lineTo(-size * 0.022, -R * 0.94);
+      c.lineTo(size * 0.022, -R * 0.94);
+      c.closePath();
+      c.fillStyle = "#f14646";
+      c.shadowColor = "#74202066";
+      c.shadowBlur = 5;
+      c.fill();
+      c.restore();
+      if (spin && progress < 1) raf.current = requestAnimationFrame(draw);
     },
     [spin, result],
   );
@@ -134,7 +225,11 @@ function Wheel({ spin, result }: { spin: boolean; result: number | null }) {
     return () => cancelAnimationFrame(raf.current);
   }, [draw]);
   return (
-    <canvas ref={ref} className="wheel" aria-label="1부터 12까지의 룰렛 원판" />
+    <canvas
+      ref={ref}
+      className="wheel"
+      aria-label={spin ? "룰렛 원판과 구슬이 회전 중" : result ? `룰렛 결과 ${result}` : "1부터 12까지의 룰렛 원판"}
+    />
   );
 }
 function App() {
@@ -189,6 +284,7 @@ function App() {
     if (spinning || !bets.length)
       return setNotice("베팅을 먼저 선택해 주세요.");
     setSpinning(true);
+    setResult(null);
     setNotice("룰렛이 돌아가는 중...");
     try {
       const data = await api<SpinResponse>("/api/games/roulette/spin", {
@@ -199,7 +295,7 @@ function App() {
       await new Promise((r) =>
         setTimeout(
           r,
-          matchMedia("(prefers-reduced-motion: reduce)").matches ? 1000 : 6000,
+          matchMedia("(prefers-reduced-motion: reduce)").matches ? 1000 : 6500,
         ),
       );
       const state = await api<PlayerState>("/api/games/roulette/state");
@@ -295,7 +391,7 @@ function App() {
             <div className="mobile-balance">
               🪙 {fmt(player.balance)} DC <b>🔥 {player.streak.current}연승</b>
             </div>
-            <Wheel spin={spinning} result={result} />
+            <Wheel spin={spinning && result !== null} result={result} />
             <div className="notice" aria-live="polite">
               {notice}
             </div>
