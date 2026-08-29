@@ -410,6 +410,13 @@ function App() {
                 </button>
               ))}
             </div>
+            <button
+              className="spin"
+              disabled={spinning || !bets.length}
+              onClick={spin}
+            >
+              🦆 {spinning ? "룰렛이 돌아가는 중..." : "SPIN! 룰렛 돌리기"}
+            </button>
             <h2>
               <i>2</i> 베팅 위치 선택 <small>최대 3곳</small>
             </h2>
@@ -470,13 +477,6 @@ function App() {
                 </div>
               ))}
             </div>
-            <button
-              className="spin"
-              disabled={spinning || !bets.length}
-              onClick={spin}
-            >
-              🦆 {spinning ? "룰렛이 돌아가는 중..." : "SPIN! 룰렛 돌리기"}
-            </button>
           </section>
           <section className="card history">
             <h2>
