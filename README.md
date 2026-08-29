@@ -1,11 +1,11 @@
 # DUCK ROULETTE
 
-Go-Go! Duck 스타일의 1인용 1~12 카지노 룰렛입니다. 기존 `duck-holdem`의 React/Vite + Fastify 모노레포와 GitHub Pages/Render 배포 구조를 기반으로 만들었습니다.
+Go-Go! Duck 스타일의 1인용 `1~14 + ★ JACKPOT` 카지노 룰렛입니다. 기존 `duck-holdem`의 React/Vite + Fastify 모노레포와 GitHub Pages/Render 배포 구조를 기반으로 만들었습니다.
 
 ## 주요 기능
 
 - Canvas 2D 원판과 반대 방향 구슬 회전, 감속·낙하·결과 포켓 수렴
-- 숫자 ×10, RED/BLACK·ODD/EVEN·LOW/HIGH ×2
+- 숫자 ×13.5, RED/BLACK·ODD/EVEN·LOW/HIGH ×2, ★ JACKPOT ×14
 - 100만/1,000만/1억/5억/ALL IN, 최대 3곳, 동일 위치 합산
 - 서버 권한형 결과·정산, `requestId` 멱등 처리, SPIN 연타 방지
 - 잔액·오늘 통계·연승·최근 기록 서버 저장, KST 기준 하루 1회 재도전 지원금
@@ -33,7 +33,7 @@ pnpm typecheck
 pnpm build
 ```
 
-정산 엔진 테스트는 1~12의 숫자·색상·홀짝·구간 판정, 복합 배당, 비정상 입력, 히스토리 단일 저장을 검증합니다.
+정산 엔진 테스트는 1~14 숫자·색상·홀짝·구간·JACKPOT 판정, 약 90% RTP, 복합 배당, 비정상 입력, 히스토리 단일 저장을 검증합니다.
 
 ## 배포
 
