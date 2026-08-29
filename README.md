@@ -1,46 +1,56 @@
-# DUCK HOLD'EM
+# DUCK ROULETTE
 
-Go-Go! Duck용 2~8인 실시간 텍사스 홀덤 MVP입니다. 클라이언트는 GitHub Pages에, 서버는 WebSocket을 지원하는 Node.js 호스팅에 각각 배포합니다.
+Go-Go! Duck 스타일의 1인용 1~12 카지노 룰렛입니다. 기존 `duck-holdem`의 React/Vite + Fastify 모노레포와 GitHub Pages/Render 배포 구조를 기반으로 만들었습니다.
 
-## 구조
+## 주요 기능
 
-- `client`: React/Vite 반응형 게임 UI
-- `server`: 서버 권한형 카드·턴·베팅·승패 판정 및 WebSocket 방 서버
-- `shared`: 양쪽에서 공유하는 메시지·상태 타입
+- Canvas 2D 원판과 반대 방향 구슬 회전, 감속·낙하·결과 포켓 수렴
+- 숫자 ×10, RED/BLACK·ODD/EVEN·LOW/HIGH ×2
+- 100만/1,000만/1억/5억/ALL IN, 최대 3곳, 동일 위치 합산
+- 서버 권한형 결과·정산, `requestId` 멱등 처리, SPIN 연타 방지
+- 잔액·오늘 통계·연승·최근 기록 서버 저장, KST 기준 하루 1회 재도전 지원금
+- 단일 게임 히스토리 UI, 최근 6개와 전체 기록 확장
+- 320px 이상 모바일 및 PC 반응형, reduced-motion 지원
 
-## 실행
+## 로컬 실행
+
+Node.js 22+와 pnpm 11이 필요합니다.
 
 ```bash
-npm install
-npm run dev
+pnpm install
+pnpm dev
 ```
 
 - 클라이언트: http://localhost:5173
-- 서버 상태: http://localhost:8787/health
-- WebSocket: ws://localhost:8787/ws
+- API: http://localhost:8787
+- 상태 확인: http://localhost:8787/health
+
+## 테스트
+
+```bash
+pnpm test
+pnpm typecheck
+pnpm build
+```
+
+정산 엔진 테스트는 1~12의 숫자·색상·홀짝·구간 판정, 복합 배당, 비정상 입력, 히스토리 단일 저장을 검증합니다.
 
 ## 배포
 
-클라이언트 빌드 시 `VITE_WS_URL`을 운영 WebSocket 주소로 지정합니다.
+### 서버 (Render)
 
-```bash
-VITE_WS_URL=wss://your-server.example/ws npm run build -w client
-```
+루트의 `render.yaml` Blueprint를 연결하면 무료 웹 서비스로 실행할 수 있습니다. 무료 Render 인스턴스의 파일 시스템은 재배포·재시작 때 초기화되므로, 영구 운영에서는 유료 영속 디스크와 `DATA_FILE=/var/data/roulette.json`을 설정하거나 인증 + PostgreSQL/Redis로 저장소를 교체해야 합니다.
 
-GitHub Pages 워크플로는 `.github/workflows/pages.yml`에 포함되어 있습니다. 서버는 Render, Fly.io, Railway, Cloud Run 등 WebSocket 지원 환경에 배포할 수 있습니다.
+### 클라이언트 (GitHub Pages)
 
-## Render 서버 배포
+1. Render 서버 URL을 저장소 변수 `VITE_API_URL`에 등록합니다.
+2. GitHub Pages의 Source를 **GitHub Actions**로 설정합니다.
+3. `main` 푸시 시 `.github/workflows/pages.yml`이 배포합니다.
 
-저장소 루트의 `render.yaml`과 `Dockerfile`은 Render Blueprint 배포용입니다.
+## API
 
-1. [Render Blueprint 생성](https://dashboard.render.com/blueprints)에서 이 저장소를 연결합니다.
-2. `duck-holdem-server` 무료 서비스를 생성합니다.
-3. 배포가 끝나면 서버 주소를 `wss://<서비스주소>/ws` 형태로 확인합니다.
-4. GitHub 저장소 `Settings → Secrets and variables → Actions → Variables`에 `VITE_WS_URL`로 등록합니다.
-5. GitHub Pages 워크플로를 다시 실행합니다.
+- `GET /api/games/roulette/state`
+- `POST /api/games/roulette/spin`
+- `POST /api/games/roulette/bailout`
 
-무료 인스턴스는 유휴 후 절전될 수 있어 첫 접속에 시간이 걸릴 수 있습니다. 운영 버전에서는 유료 상시 실행 또는 다른 WebSocket 호스팅을 권장합니다.
-
-## 보안 원칙
-
-클라이언트는 행동 의도만 전송합니다. 덱, 상대 개인카드, 행동 유효성, 베팅 금액, 족보 및 팟 정산은 서버가 결정합니다. 현재 MVP는 메모리 기반 방 저장소이므로 운영 시 Redis/Postgres와 인증 토큰 저장소로 교체해야 합니다.
+요청은 브라우저가 만든 `x-duck-session` 헤더를 사용합니다. 클라이언트가 보낸 결과·지급액·잔액은 신뢰하지 않습니다.

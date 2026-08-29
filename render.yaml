@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: duck-holdem-server
+    name: duck-roulette-server
     runtime: docker
     plan: free
     dockerfilePath: ./Dockerfile
