@@ -14,11 +14,15 @@ const API = import.meta.env.VITE_API_URL || "http://localhost:8787",
     localStorage.duckRouletteSession ??
     (localStorage.duckRouletteSession = crypto.randomUUID()),
   chips = [1e6, 1e7, 1e8, 5e8, "ALL_IN"] as const;
-const won = (n: number) => (n % 2 ? "red" : "black");
+const won = (n: number) => (n === 15 ? "jackpot" : n % 2 ? "red" : "black");
 const fmt = (n: number) => new Intl.NumberFormat("ko-KR").format(n);
 const short = (n: number) =>
   n >= 1e8 ? `${n / 1e8}억` : n >= 1e4 ? `${n / 1e4}만` : fmt(n);
 const key = (t: BetType, x: BetTarget) => `${t}:${x}`;
+const resultLabel = (number: number) =>
+  number === 15 ? "★ JACKPOT" : String(number);
+const targetLabel = (target: BetTarget) =>
+  target === "STAR" ? "★ JACKPOT" : String(target);
 async function api<T>(path: string, init?: RequestInit) {
   const res = await fetch(`${API}${path}`, {
       ...init,
@@ -42,16 +46,26 @@ function Wheel({ spin, result }: { spin: boolean; result: number | null }) {
     const x = clamp(value);
     return x * x * (3 - 2 * x);
   };
-  const spinAngle = (seconds: number, maxSpeed: number, accelerate: number, cruise: number, stop: number) => {
+  const spinAngle = (
+    seconds: number,
+    maxSpeed: number,
+    accelerate: number,
+    cruise: number,
+    stop: number,
+  ) => {
     if (seconds <= accelerate)
       return (maxSpeed * seconds * seconds) / (2 * accelerate);
     const accelerated = (maxSpeed * accelerate) / 2;
-    if (seconds <= cruise) return accelerated + maxSpeed * (seconds - accelerate);
+    if (seconds <= cruise)
+      return accelerated + maxSpeed * (seconds - accelerate);
     const duration = stop - cruise;
     const elapsed = Math.min(duration, seconds - cruise);
     const u = elapsed / duration;
-    const decelerationDistance = maxSpeed * duration * (u - u * u + (u * u * u) / 3);
-    return accelerated + maxSpeed * (cruise - accelerate) + decelerationDistance;
+    const decelerationDistance =
+      maxSpeed * duration * (u - u * u + (u * u * u) / 3);
+    return (
+      accelerated + maxSpeed * (cruise - accelerate) + decelerationDistance
+    );
   };
   const draw = useCallback(
     (time: number) => {
@@ -71,10 +85,15 @@ function Wheel({ spin, result }: { spin: boolean; result: number | null }) {
         elapsed = spin ? Math.min(6.5, (time - start.current) / 1000) : 6.5,
         progress = elapsed / 6.5,
         wheel = spin ? spinAngle(elapsed, 4.7, 0.55, 3.15, 6.5) : 0,
+        sectorAngle = (Math.PI * 2) / 15,
         targetSector = result
-          ? -Math.PI / 2 + ((result - 1) * Math.PI) / 6 + Math.PI / 12
+          ? -Math.PI / 2 + (result - 1) * sectorAngle + sectorAngle / 2
           : -Math.PI / 2;
-      const winningGlow = result ? (spin ? smooth((elapsed - 5.65) / 0.65) : 1) : 0;
+      const winningGlow = result
+        ? spin
+          ? smooth((elapsed - 5.65) / 0.65)
+          : 1
+        : 0;
       c.save();
       c.translate(mid, mid);
       const wood = c.createRadialGradient(0, 0, R * 0.4, 0, 0, R);
@@ -99,13 +118,13 @@ function Wheel({ spin, result }: { spin: boolean; result: number | null }) {
       c.strokeStyle = "#32180e";
       c.stroke();
       c.rotate(wheel);
-      for (let i = 0; i < 12; i++) {
-        const a = -Math.PI / 2 + (i * Math.PI) / 6;
+      for (let i = 0; i < 15; i++) {
+        const a = -Math.PI / 2 + i * sectorAngle;
         c.beginPath();
         c.moveTo(0, 0);
-        c.arc(0, 0, R * 0.82, a, a + Math.PI / 6);
+        c.arc(0, 0, R * 0.82, a, a + sectorAngle);
         c.closePath();
-        c.fillStyle = i % 2 ? "#17191f" : "#d92f31";
+        c.fillStyle = i === 14 ? "#d9a415" : i % 2 ? "#17191f" : "#d92f31";
         c.fill();
         if (result === i + 1 && winningGlow > 0) {
           c.save();
@@ -118,19 +137,25 @@ function Wheel({ spin, result }: { spin: boolean; result: number | null }) {
         c.lineWidth = 2;
         c.stroke();
         c.save();
-        c.rotate(a + Math.PI / 12);
+        c.rotate(a + sectorAngle / 2);
         c.translate(R * 0.66, 0);
         c.rotate(Math.PI / 2);
         c.fillStyle = "#fff4c7";
-        c.font = `800 ${size * 0.055}px sans-serif`;
+        c.font = `800 ${size * (i === 14 ? 0.065 : 0.044)}px sans-serif`;
         c.textAlign = "center";
-        c.fillText(String(i + 1), 0, size * 0.02);
+        c.fillText(i === 14 ? "★" : String(i + 1), 0, size * 0.018);
         c.restore();
       }
-      for (let i = 0; i < 12; i++) {
-        const pinAngle = -Math.PI / 2 + (i * Math.PI) / 6;
+      for (let i = 0; i < 15; i++) {
+        const pinAngle = -Math.PI / 2 + i * sectorAngle;
         c.beginPath();
-        c.arc(Math.cos(pinAngle) * R * 0.87, Math.sin(pinAngle) * R * 0.87, size * 0.008, 0, Math.PI * 2);
+        c.arc(
+          Math.cos(pinAngle) * R * 0.87,
+          Math.sin(pinAngle) * R * 0.87,
+          size * 0.008,
+          0,
+          Math.PI * 2,
+        );
         c.fillStyle = "#ffe18a";
         c.shadowColor = "#8f520d";
         c.shadowBlur = 3;
@@ -139,7 +164,14 @@ function Wheel({ spin, result }: { spin: boolean; result: number | null }) {
       }
       c.beginPath();
       c.arc(0, 0, R * 0.35, 0, Math.PI * 2);
-      const hub = c.createRadialGradient(-R * 0.08, -R * 0.1, 0, 0, 0, R * 0.35);
+      const hub = c.createRadialGradient(
+        -R * 0.08,
+        -R * 0.1,
+        0,
+        0,
+        0,
+        R * 0.35,
+      );
       hub.addColorStop(0, "#b67836");
       hub.addColorStop(1, "#54250f");
       c.fillStyle = hub;
@@ -149,7 +181,14 @@ function Wheel({ spin, result }: { spin: boolean; result: number | null }) {
       c.stroke();
       c.beginPath();
       c.arc(0, 0, R * 0.13, 0, Math.PI * 2);
-      const gold = c.createRadialGradient(-R * 0.04, -R * 0.05, 0, 0, 0, R * 0.13);
+      const gold = c.createRadialGradient(
+        -R * 0.04,
+        -R * 0.05,
+        0,
+        0,
+        0,
+        R * 0.13,
+      );
       gold.addColorStop(0, "#fff0a4");
       gold.addColorStop(0.45, "#f7bd34");
       gold.addColorStop(1, "#9b5909");
@@ -163,12 +202,17 @@ function Wheel({ spin, result }: { spin: boolean; result: number | null }) {
         const absoluteTarget = targetSector + wheel;
         const targetBehind =
           absoluteTarget -
-          Math.ceil((absoluteTarget - freeBallAngle) / (Math.PI * 2)) * Math.PI * 2;
+          Math.ceil((absoluteTarget - freeBallAngle) / (Math.PI * 2)) *
+            Math.PI *
+            2;
         const settle = smooth((elapsed - 5.35) / 1.15);
         ballAngle = freeBallAngle + (targetBehind - freeBallAngle) * settle;
         const drop = smooth((elapsed - 3.15) / 2.15);
-        const bounceWindow = clamp((elapsed - 4.15) / 1.55) * (1 - smooth((elapsed - 5.35) / 0.75));
-        const bounce = Math.sin((elapsed - 4.15) * 22) * R * 0.018 * bounceWindow;
+        const bounceWindow =
+          clamp((elapsed - 4.15) / 1.55) *
+          (1 - smooth((elapsed - 5.35) / 0.75));
+        const bounce =
+          Math.sin((elapsed - 4.15) * 22) * R * 0.018 * bounceWindow;
         radius = R * (0.935 - drop * 0.215) + bounce;
       }
       const ballX = mid + Math.cos(ballAngle) * radius;
@@ -228,7 +272,13 @@ function Wheel({ spin, result }: { spin: boolean; result: number | null }) {
     <canvas
       ref={ref}
       className="wheel"
-      aria-label={spin ? "룰렛 원판과 구슬이 회전 중" : result ? `룰렛 결과 ${result}` : "1부터 12까지의 룰렛 원판"}
+      aria-label={
+        spin
+          ? "룰렛 원판과 구슬이 회전 중"
+          : result
+            ? `룰렛 결과 ${resultLabel(result)}`
+            : "1부터 14와 잭팟으로 구성된 룰렛 원판"
+      }
     />
   );
 }
@@ -238,6 +288,7 @@ function App() {
     [chip, setChip] = useState<(typeof chips)[number]>(1e6),
     [spinning, setSpinning] = useState(false),
     [result, setResult] = useState<number | null>(null),
+    [roundResult, setRoundResult] = useState<SpinResponse | null>(null),
     [notice, setNotice] = useState("베팅 칩과 위치를 선택해 주세요."),
     [allHistory, setAllHistory] = useState(false),
     [sound, setSound] = useState(true);
@@ -249,7 +300,9 @@ function App() {
   const available =
     (player?.balance ?? 0) - bets.reduce((s, b) => s + b.amount, 0);
   const betAt = (type: BetType, target: BetTarget) =>
-    bets.find((placed) => key(placed.type, placed.target) === key(type, target));
+    bets.find(
+      (placed) => key(placed.type, placed.target) === key(type, target),
+    );
   const betChip = (type: BetType, target: BetTarget) => {
     const placed = betAt(type, target);
     return placed ? (
@@ -285,6 +338,7 @@ function App() {
       return setNotice("베팅을 먼저 선택해 주세요.");
     setSpinning(true);
     setResult(null);
+    setRoundResult(null);
     setNotice("룰렛이 돌아가는 중...");
     try {
       const data = await api<SpinResponse>("/api/games/roulette/spin", {
@@ -301,8 +355,9 @@ function App() {
       const state = await api<PlayerState>("/api/games/roulette/state");
       setPlayer(state.player);
       setBets([]);
+      setRoundResult(data);
       setNotice(
-        `${data.result.number} ${data.result.color} · ${data.profit >= 0 ? "+" : ""}${fmt(data.profit)} DC${data.streakBonus ? ` · 연승 보너스 +${fmt(data.streakBonus)}` : ""}`,
+        `${resultLabel(data.result.number)} ${data.result.color} · ${data.profit >= 0 ? "+" : ""}${fmt(data.profit)} DC${data.streakBonus ? ` · 연승 보너스 +${fmt(data.streakBonus)}` : ""}`,
       );
     } catch (e) {
       setNotice((e as Error).message);
@@ -421,7 +476,7 @@ function App() {
               <i>2</i> 베팅 위치 선택 <small>최대 3곳</small>
             </h2>
             <div className="numbers">
-              {Array.from({ length: 12 }, (_, i) => i + 1).map((n) => (
+              {Array.from({ length: 14 }, (_, i) => i + 1).map((n) => (
                 <button
                   key={n}
                   disabled={spinning}
@@ -439,8 +494,8 @@ function App() {
                 ["COLOR", "BLACK", "BLACK"],
                 ["PARITY", "ODD", "홀수 (ODD)"],
                 ["PARITY", "EVEN", "짝수 (EVEN)"],
-                ["RANGE", "LOW", "1 ~ 6 (LOW)"],
-                ["RANGE", "HIGH", "7 ~ 12 (HIGH)"],
+                ["RANGE", "LOW", "1 ~ 7 (LOW)"],
+                ["RANGE", "HIGH", "8 ~ 14 (HIGH)"],
               ].map(([t, x, label]) => (
                 <button
                   key={x}
@@ -455,6 +510,16 @@ function App() {
                   {betChip(t as BetType, x as BetTarget)}
                 </button>
               ))}
+              <button
+                disabled={spinning}
+                className="jackpot-bet"
+                onClick={() => bet("JACKPOT", "STAR")}
+              >
+                <span className="bet-label">
+                  ★ JACKPOT <small>×14</small>
+                </span>
+                {betChip("JACKPOT", "STAR")}
+              </button>
             </div>
             <div className="my-bets">
               <b>내 베팅 {bets.length} / 3</b>
@@ -466,11 +531,11 @@ function App() {
               </button>
               {bets.map((b, i) => (
                 <div key={key(b.type, b.target)}>
-                  <span>{String(b.target)}</span>
+                  <span>{targetLabel(b.target)}</span>
                   <strong>{fmt(b.amount)} DC</strong>
                   <button
                     onClick={() => remove(i)}
-                    aria-label={`${String(b.target)} 베팅 취소`}
+                    aria-label={`${targetLabel(b.target)} 베팅 취소`}
                   >
                     ×
                   </button>
@@ -486,9 +551,11 @@ function App() {
               <div className="history-list">
                 {history.map((h) => (
                   <article key={h.id}>
-                    <b className={won(h.result.number)}>{h.result.number}</b>
+                    <b className={won(h.result.number)}>
+                      {h.result.number === 15 ? "★" : h.result.number}
+                    </b>
                     <span>
-                      {h.bets.map((b) => String(b.target)).join(" + ")}
+                      {h.bets.map((b) => targetLabel(b.target)).join(" + ")}
                     </span>
                     <strong className={h.profit >= 0 ? "gain" : "loss"}>
                       {h.profit >= 0 ? "+" : ""}
@@ -564,14 +631,85 @@ function App() {
           )}
           <section className="card rules">
             <h3>게임 안내</h3>
-            <p>• 숫자 1~12는 ×10</p>
+            <p>• 숫자 1~14는 ×13.5</p>
             <p>• 색상·홀짝·구간은 ×2</p>
+            <p>• ★ JACKPOT은 ×14</p>
             <p>• 한 라운드 최대 3곳</p>
-            <p>• 0은 없습니다.</p>
+            <p>• JACKPOT 결과에는 일반 베팅이 적중하지 않습니다.</p>
             <p>• 결과는 서버에서 공정하게 결정됩니다.</p>
           </section>
         </aside>
       </main>
+      {roundResult && (
+        <div className="result-backdrop" role="presentation">
+          <section
+            className={`result-modal ${roundResult.outcome.toLowerCase()} ${roundResult.result.number === 15 ? "jackpot-result" : ""}`}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="round-result-title"
+          >
+            <div className="result-icon" aria-hidden="true">
+              {roundResult.result.number === 15
+                ? "🌟"
+                : roundResult.outcome === "WIN"
+                  ? "🎉"
+                  : roundResult.outcome === "DRAW"
+                    ? "🤝"
+                    : "🦆"}
+            </div>
+            <p className="result-pocket">
+              결과 · <b>{resultLabel(roundResult.result.number)}</b>
+            </p>
+            <h2 id="round-result-title">
+              {roundResult.result.number === 15
+                ? "JACKPOT!"
+                : roundResult.outcome === "WIN"
+                  ? "베팅 적중!"
+                  : roundResult.outcome === "DRAW"
+                    ? "본전이에요"
+                    : "다음 행운을 노려보세요"}
+            </h2>
+            <strong
+              className={`result-profit ${roundResult.profit >= 0 ? "gain" : "loss"}`}
+            >
+              {roundResult.profit >= 0 ? "+" : ""}
+              {fmt(roundResult.profit)} <small>DC</small>
+            </strong>
+            <div className="bet-settlements">
+              {roundResult.betResults.map((item) => (
+                <article
+                  key={key(item.bet.type, item.bet.target)}
+                  className={item.hit ? "hit" : "miss"}
+                >
+                  <div>
+                    <b>{targetLabel(item.bet.target)}</b>
+                    <small>
+                      {fmt(item.bet.amount)} DC · ×{item.multiplier}
+                    </small>
+                  </div>
+                  <span>{item.hit ? "적중" : "미적중"}</span>
+                  <strong className={item.profit >= 0 ? "gain" : "loss"}>
+                    {item.profit >= 0 ? "+" : ""}
+                    {fmt(item.profit)} DC
+                  </strong>
+                </article>
+              ))}
+            </div>
+            {roundResult.streakBonus > 0 && (
+              <p className="result-bonus">
+                🔥 연승 보너스 +{fmt(roundResult.streakBonus)} DC
+              </p>
+            )}
+            <button
+              className="result-confirm"
+              autoFocus
+              onClick={() => setRoundResult(null)}
+            >
+              확인
+            </button>
+          </section>
+        </div>
+      )}
       <nav>
         <span>
           ⌂<small>홈</small>

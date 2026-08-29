@@ -252,7 +252,7 @@ button {
 }
 .numbers {
   display: grid;
-  grid-template-columns: repeat(6, 1fr);
+  grid-template-columns: repeat(7, 1fr);
   gap: 6px;
 }
 .numbers button,
@@ -309,6 +309,10 @@ button {
   background: #191b20 !important;
   color: #fff;
 }
+.jackpot {
+  background: linear-gradient(145deg, #ffe56f, #d99a0a) !important;
+  color: #614000 !important;
+}
 .outside {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
@@ -326,6 +330,18 @@ button {
 .outside button.red,
 .outside button.black {
   color: #fff;
+}
+.outside .jackpot-bet {
+  grid-column: 1 / 3;
+  color: #5b3a00;
+  background: linear-gradient(135deg, #fff4a8, #ffc72e);
+  border: 2px solid #df9b00;
+  box-shadow: inset 0 -3px #b77b0033;
+}
+.outside .jackpot-bet:has(.placed-chip) {
+  box-shadow:
+    inset 0 0 0 3px #fff7c4,
+    inset 0 -3px #b77b0033;
 }
 .outside small {
   font-size: 11px;
@@ -493,6 +509,126 @@ nav small {
 .loading b {
   font-size: 24px;
 }
+.result-backdrop {
+  position: fixed;
+  z-index: 20;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: #17325a66;
+  backdrop-filter: blur(5px);
+}
+.result-modal {
+  width: min(92vw, 460px);
+  max-height: min(88vh, 680px);
+  overflow: auto;
+  padding: 25px;
+  border-radius: 24px;
+  background: #fff;
+  text-align: center;
+  box-shadow: 0 24px 70px #102a5155;
+  animation: result-pop 0.28s ease-out;
+}
+.result-modal.jackpot-result {
+  background: linear-gradient(160deg, #fffdf0, #fff3af);
+  box-shadow: 0 24px 80px #bd860077;
+}
+.result-icon {
+  font-size: 42px;
+}
+.result-pocket {
+  margin: 4px 0;
+  color: #65748a;
+  font-size: 14px;
+}
+.result-pocket b {
+  color: #17366c;
+}
+.result-modal h2 {
+  margin: 8px 0 2px;
+  font-size: 24px;
+}
+.result-profit {
+  display: block;
+  margin-bottom: 18px;
+  font-size: 30px;
+}
+.result-profit small {
+  font-size: 13px;
+}
+.bet-settlements {
+  display: grid;
+  gap: 8px;
+  text-align: left;
+}
+.bet-settlements article {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 4px 10px;
+  align-items: center;
+  padding: 12px;
+  border-radius: 13px;
+  border: 1px solid #dfe8f1;
+  background: #f8fbff;
+}
+.bet-settlements article.hit {
+  border-color: #91dfb6;
+  background: #f0fff7;
+}
+.bet-settlements article.miss {
+  background: #fff7f7;
+}
+.bet-settlements article div {
+  display: grid;
+  gap: 3px;
+}
+.bet-settlements article div small {
+  color: #77869b;
+}
+.bet-settlements article > span {
+  padding: 4px 8px;
+  border-radius: 12px;
+  background: #e7edf4;
+  color: #6a788b;
+  font-size: 11px;
+  font-weight: 800;
+}
+.bet-settlements article.hit > span {
+  background: #d3f6e3;
+  color: #078749;
+}
+.bet-settlements article > strong {
+  grid-column: 1 / 3;
+  text-align: right;
+  font-size: 14px;
+}
+.result-bonus {
+  margin: 12px 0 0;
+  padding: 9px;
+  border-radius: 10px;
+  background: #fff3d3;
+  color: #9c6500;
+  font-weight: 800;
+}
+.result-confirm {
+  width: 100%;
+  min-height: 50px;
+  margin-top: 18px;
+  border: 2px solid #082b63;
+  border-radius: 12px;
+  background: linear-gradient(#3987f7, #1768e2);
+  color: #fff;
+  font-size: 17px;
+  font-weight: 900;
+  box-shadow: 0 6px 14px #1768e244;
+}
+@keyframes result-pop {
+  from {
+    opacity: 0;
+    transform: translateY(16px) scale(0.96);
+  }
+}
 @media (max-width: 1050px) {
   .page {
     grid-template-columns: 190px minmax(500px, 1fr);
@@ -582,7 +718,7 @@ nav small {
     font-size: 12px;
   }
   .numbers {
-    grid-template-columns: repeat(6, 1fr);
+    grid-template-columns: repeat(7, 1fr);
   }
   .numbers button {
     min-width: 0;
@@ -595,6 +731,9 @@ nav small {
   }
   .right .card {
     width: 100%;
+  }
+  .result-modal {
+    padding: 20px 16px;
   }
 }
 @media (max-width: 360px) {
