@@ -89,11 +89,10 @@ function Wheel({ spin, result }: { spin: boolean; result: number | null }) {
         targetSector = result
           ? -Math.PI / 2 + (result - 1) * sectorAngle + sectorAngle / 2
           : -Math.PI / 2;
-      const winningGlow = result
-        ? spin
-          ? smooth((elapsed - 5.65) / 0.65)
-          : 1
-        : 0;
+      // Reveal the winning pocket only after the ball has fully settled.
+      // Highlighting during the settling phase makes the result visible before
+      // the ball physically reaches its destination.
+      const winningGlow = result && !spin ? 1 : 0;
       c.save();
       c.translate(mid, mid);
       const wood = c.createRadialGradient(0, 0, R * 0.4, 0, 0, R);
