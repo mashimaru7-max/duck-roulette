@@ -1,5 +1,499 @@
-import React,{useCallback,useEffect,useRef,useState}from"react";import{createRoot}from"react-dom/client";import type{Bet,BetTarget,BetType,PlayerRoulette,PlayerState,SpinResponse}from"@duck-holdem/shared";import"./styles.css";
-const API=import.meta.env.VITE_API_URL||"http://localhost:8787",session=localStorage.duckRouletteSession??(localStorage.duckRouletteSession=crypto.randomUUID()),chips=[1e6,1e7,1e8,5e8,"ALL_IN"]as const;const won=(n:number)=>n%2?"red":"black";const fmt=(n:number)=>new Intl.NumberFormat("ko-KR").format(n);const short=(n:number)=>n>=1e8?`${n/1e8}억`:n>=1e4?`${n/1e4}만`:fmt(n);const key=(t:BetType,x:BetTarget)=>`${t}:${x}`;
-async function api<T>(path:string,init?:RequestInit){const res=await fetch(`${API}${path}`,{...init,headers:{"content-type":"application/json","x-duck-session":session,...init?.headers}}),body=await res.json();if(!res.ok)throw Error(body.error||"서버 요청에 실패했습니다.");return body as T}
-function Wheel({spin,result}:{spin:boolean;result:number|null}){const ref=useRef<HTMLCanvasElement>(null),start=useRef(0),raf=useRef(0);const draw=useCallback((time:number)=>{const canvas=ref.current;if(!canvas)return;const d=Math.min(devicePixelRatio||1,2),size=canvas.clientWidth;if(canvas.width!==size*d){canvas.width=size*d;canvas.height=size*d}const c=canvas.getContext("2d")!;c.setTransform(d,0,0,d,0,0);c.clearRect(0,0,size,size);const mid=size/2,R=size*.46,t=spin?Math.min(1,(time-start.current)/6000):1,ease=1-Math.pow(1-t,3),wheel=spin?(time-start.current)*.0026*(1-ease*.82):0;c.save();c.translate(mid,mid);c.beginPath();c.arc(0,0,R,0,Math.PI*2);c.fillStyle="#6b3516";c.fill();c.lineWidth=size*.028;c.strokeStyle="#d99a25";c.stroke();c.rotate(wheel);for(let i=0;i<12;i++){const a=-Math.PI/2+i*Math.PI/6;c.beginPath();c.moveTo(0,0);c.arc(0,0,R*.82,a,a+Math.PI/6);c.closePath();c.fillStyle=i%2?"#17191f":"#d92f31";c.fill();c.strokeStyle="#f4c65b";c.lineWidth=2;c.stroke();c.save();c.rotate(a+Math.PI/12);c.translate(R*.66,0);c.rotate(Math.PI/2);c.fillStyle="#fff4c7";c.font=`800 ${size*.055}px sans-serif`;c.textAlign="center";c.fillText(String(i+1),0,size*.02);c.restore()}c.beginPath();c.arc(0,0,R*.35,0,Math.PI*2);c.fillStyle="#7b451f";c.fill();c.strokeStyle="#f7c85b";c.lineWidth=5;c.stroke();c.beginPath();c.arc(0,0,R*.13,0,Math.PI*2);c.fillStyle="#f4b52c";c.fill();c.restore();let ballAngle=-Math.PI/2;if(spin){const outer=-((time-start.current)*.0055*(1-ease*.8));const target=result?(-Math.PI/2+(result-1)*Math.PI/6+Math.PI/12+wheel):0;ballAngle=t<.87?outer:outer+(target-outer)*Math.min(1,(t-.87)/.13)}else if(result)ballAngle=-Math.PI/2+(result-1)*Math.PI/6+Math.PI/12;const radius=R*(spin?(.93-.2*Math.max(0,(t-.55)/.45)):.73);c.beginPath();c.arc(mid+Math.cos(ballAngle)*radius,mid+Math.sin(ballAngle)*radius,size*.022,0,Math.PI*2);c.fillStyle="white";c.shadowColor="#0008";c.shadowBlur=7;c.fill();c.shadowBlur=0;if(spin&&t<1)raf.current=requestAnimationFrame(draw)},[spin,result]);useEffect(()=>{start.current=performance.now();raf.current=requestAnimationFrame(draw);return()=>cancelAnimationFrame(raf.current)},[draw]);return <canvas ref={ref} className="wheel" aria-label="1부터 12까지의 룰렛 원판"/>}
-function App(){const[player,setPlayer]=useState<PlayerRoulette>(),[bets,setBets]=useState<Bet[]>([]),[chip,setChip]=useState<(typeof chips)[number]>(1e6),[spinning,setSpinning]=useState(false),[result,setResult]=useState<number|null>(null),[notice,setNotice]=useState("베팅 칩과 위치를 선택해 주세요."),[allHistory,setAllHistory]=useState(false),[sound,setSound]=useState(true);useEffect(()=>{api<PlayerState>("/api/games/roulette/state").then(x=>setPlayer(x.player)).catch(e=>setNotice(e.message))},[]);const available=(player?.balance??0)-bets.reduce((s,b)=>s+b.amount,0);function bet(type:BetType,target:BetTarget){if(spinning||!player)return;const amount=chip==="ALL_IN"?available:chip;if(amount<=0)return setNotice("보유 포인트가 부족합니다.");const i=bets.findIndex(b=>key(b.type,b.target)===key(type,target));if(i<0&&bets.length>=3)return setNotice("한 라운드에는 최대 3곳까지 베팅할 수 있어요.");if(amount>available)return setNotice("보유 포인트가 부족합니다.");const next=[...bets];if(i>=0)next[i]={...next[i],amount:next[i].amount+amount};else next.push({type,target,amount});setBets(next);setNotice(`${String(target)}에 ${short(amount)} DC 베팅했습니다.`)}function remove(i:number){if(!spinning)setBets(bets.filter((_,x)=>x!==i))}async function spin(){if(spinning||!bets.length)return setNotice("베팅을 먼저 선택해 주세요.");setSpinning(true);setNotice("룰렛이 돌아가는 중...");try{const data=await api<SpinResponse>("/api/games/roulette/spin",{method:"POST",body:JSON.stringify({requestId:crypto.randomUUID(),bets})});setResult(data.result.number);await new Promise(r=>setTimeout(r,matchMedia("(prefers-reduced-motion: reduce)").matches?1000:6000));const state=await api<PlayerState>("/api/games/roulette/state");setPlayer(state.player);setBets([]);setNotice(`${data.result.number} ${data.result.color} · ${data.profit>=0?"+":""}${fmt(data.profit)} DC${data.streakBonus?` · 연승 보너스 +${fmt(data.streakBonus)}`:""}`)}catch(e){setNotice((e as Error).message)}finally{setSpinning(false)}}async function bailout(){try{const x=await api<{player:PlayerRoulette}>("/api/games/roulette/bailout",{method:"POST"});setPlayer(x.player);setNotice("재도전 지원금 5억 DC를 받았습니다.")}catch(e){setNotice((e as Error).message)}}if(!player)return <main className="loading"><div>🦆</div><b>DUCK ROULETTE</b><p>{notice}</p></main>;const history=allHistory?player.history:player.history.slice(0,6),rate=player.today.plays?Math.round(player.today.wins/player.today.plays*1000)/10:0;return <><header className="site-header"><div className="brand">🦆 <b>Go-Go! Duck</b></div><div className="account">🍗 마루 <span>🪙 {fmt(player.balance)} DC</span></div></header><main className="page"><aside className="left"><section className="card profile"><h3>내 정보</h3><div className="avatar">🍗</div><b>마루</b><small>보유 포인트</small><strong>{fmt(player.balance)} DC</strong><button>＋ 충전하기</button></section><section className="card missions"><h3>오늘의 미션</h3><p>룰렛 3회 플레이 <b>{Math.min(player.today.plays,3)} / 3</b></p><progress value={Math.min(player.today.plays,3)} max="3"/><p>룰렛 1회 적중 <b>{Math.min(player.today.wins,1)} / 1</b></p><progress value={Math.min(player.today.wins,1)} max="1"/></section><section className="jackpot">👑<b>1,000,000,000 DC</b><span>행운의 주인공이 되어보세요!</span></section></aside><div className="center"><section className="card game-card"><div className="title"><div><span>🦆</span><h1>DUCK <em>ROULETTE</em></h1><p>굴러가는 구슬을 보며 결과를 예측해보세요!</p></div><button className="sound" onClick={()=>setSound(!sound)} aria-label="효과음 켜기 또는 끄기">{sound?"🔊":"🔇"}</button></div><div className="mobile-balance">🪙 {fmt(player.balance)} DC <b>🔥 {player.streak.current}연승</b></div><Wheel spin={spinning} result={result}/><div className="notice" aria-live="polite">{notice}</div><h2><i>1</i> 베팅 칩 선택</h2><div className="chips">{chips.map((c,i)=><button key={String(c)} disabled={spinning||(c==="ALL_IN"&&available===0)} className={`${chip===c?"active":""} c${i}`} onClick={()=>setChip(c)}>{c==="ALL_IN"?"올인":short(c)}</button>)}</div><h2><i>2</i> 베팅 위치 선택 <small>최대 3곳</small></h2><div className="numbers">{Array.from({length:12},(_,i)=>i+1).map(n=><button key={n} disabled={spinning} className={won(n)} onClick={()=>bet("NUMBER",n)}>{n}</button>)}</div><div className="outside">{[["COLOR","RED","RED"],["COLOR","BLACK","BLACK"],["PARITY","ODD","홀수 (ODD)"],["PARITY","EVEN","짝수 (EVEN)"],["RANGE","LOW","1 ~ 6 (LOW)"],["RANGE","HIGH","7 ~ 12 (HIGH)"]].map(([t,x,label])=><button key={x} disabled={spinning} className={String(x).toLowerCase()} onClick={()=>bet(t as BetType,x as BetTarget)}>{label}<small>×2</small></button>)}</div><div className="my-bets"><b>내 베팅 {bets.length} / 3</b><button disabled={spinning||!bets.length} onClick={()=>setBets([])}>선택 초기화</button>{bets.map((b,i)=><div key={key(b.type,b.target)}><span>{String(b.target)}</span><strong>{fmt(b.amount)} DC</strong><button onClick={()=>remove(i)} aria-label={`${String(b.target)} 베팅 취소`}>×</button></div>)}</div><button className="spin" disabled={spinning||!bets.length} onClick={spin}>🦆 {spinning?"룰렛이 돌아가는 중...":"SPIN! 룰렛 돌리기"}</button></section><section className="card history"><h2>최근 게임 결과 <small>최근 6개</small></h2>{history.length?<div className="history-list">{history.map(h=><article key={h.id}><b className={won(h.result.number)}>{h.result.number}</b><span>{h.bets.map(b=>String(b.target)).join(" + ")}</span><strong className={h.profit>=0?"gain":"loss"}>{h.profit>=0?"+":""}{fmt(h.profit)} DC</strong></article>)}</div>:<p className="empty">아직 게임 기록이 없습니다.</p>} {player.history.length>6&&<button className="more" onClick={()=>setAllHistory(!allHistory)}>{allHistory?"접기":"전체 기록 보기"}</button>}</section></div><aside className="right"><section className="card stats"><h3>오늘 게임 통계</h3><dl><div><dt>플레이</dt><dd>{player.today.plays}회</dd></div><div><dt>승 / 패 / 무</dt><dd>{player.today.wins} / {player.today.losses} / {player.today.draws}</dd></div><div><dt>승률</dt><dd>{rate}%</dd></div><div><dt>현재 / 최고 연승</dt><dd>{player.streak.current} / {player.streak.best}</dd></div><div><dt>오늘 손익</dt><dd className={player.today.profit>=0?"gain":"loss"}>{fmt(player.today.profit)} DC</dd></div></dl></section><section className="card streak"><h3>연승 보너스</h3><p>🔥 3연승 <b>+100만</b></p><p>🥉 5연승 <b>+500만</b></p><p>🏆 7연승 <b>+1,000만</b></p></section>{player.balance===0&&!bets.length&&<section className="card bailout"><h3>포인트가 모두 소진되었습니다.</h3><p>하루 한 번 다시 도전할 수 있어요.</p><button onClick={bailout}>재도전 지원금 5억 받기</button></section>}<section className="card rules"><h3>게임 안내</h3><p>• 숫자 1~12는 ×10</p><p>• 색상·홀짝·구간은 ×2</p><p>• 한 라운드 최대 3곳</p><p>• 0은 없습니다.</p><p>• 결과는 서버에서 공정하게 결정됩니다.</p></section></aside></main><nav><span>⌂<small>홈</small></span><span>📣<small>게시판</small></span><span>♔<small>랭킹</small></span><span>▣<small>상점</small></span><span className="selected">♟<small>게임</small></span></nav></>};createRoot(document.getElementById("root")!).render(<App/>);
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import { createRoot } from "react-dom/client";
+import type {
+  Bet,
+  BetTarget,
+  BetType,
+  PlayerRoulette,
+  PlayerState,
+  SpinResponse,
+} from "@duck-holdem/shared";
+import "./styles.css";
+const API = import.meta.env.VITE_API_URL || "http://localhost:8787",
+  session =
+    localStorage.duckRouletteSession ??
+    (localStorage.duckRouletteSession = crypto.randomUUID()),
+  chips = [1e6, 1e7, 1e8, 5e8, "ALL_IN"] as const;
+const won = (n: number) => (n % 2 ? "red" : "black");
+const fmt = (n: number) => new Intl.NumberFormat("ko-KR").format(n);
+const short = (n: number) =>
+  n >= 1e8 ? `${n / 1e8}억` : n >= 1e4 ? `${n / 1e4}만` : fmt(n);
+const key = (t: BetType, x: BetTarget) => `${t}:${x}`;
+async function api<T>(path: string, init?: RequestInit) {
+  const res = await fetch(`${API}${path}`, {
+      ...init,
+      headers: {
+        "content-type": "application/json",
+        "x-duck-session": session,
+        ...init?.headers,
+      },
+    }),
+    body = await res.json();
+  if (!res.ok) throw Error(body.error || "서버 요청에 실패했습니다.");
+  return body as T;
+}
+function Wheel({ spin, result }: { spin: boolean; result: number | null }) {
+  const ref = useRef<HTMLCanvasElement>(null),
+    start = useRef(0),
+    raf = useRef(0);
+  const draw = useCallback(
+    (time: number) => {
+      const canvas = ref.current;
+      if (!canvas) return;
+      const d = Math.min(devicePixelRatio || 1, 2),
+        size = canvas.clientWidth;
+      if (canvas.width !== size * d) {
+        canvas.width = size * d;
+        canvas.height = size * d;
+      }
+      const c = canvas.getContext("2d")!;
+      c.setTransform(d, 0, 0, d, 0, 0);
+      c.clearRect(0, 0, size, size);
+      const mid = size / 2,
+        R = size * 0.46,
+        t = spin ? Math.min(1, (time - start.current) / 6000) : 1,
+        ease = 1 - Math.pow(1 - t, 3),
+        wheel = spin ? (time - start.current) * 0.0026 * (1 - ease * 0.82) : 0;
+      c.save();
+      c.translate(mid, mid);
+      c.beginPath();
+      c.arc(0, 0, R, 0, Math.PI * 2);
+      c.fillStyle = "#6b3516";
+      c.fill();
+      c.lineWidth = size * 0.028;
+      c.strokeStyle = "#d99a25";
+      c.stroke();
+      c.rotate(wheel);
+      for (let i = 0; i < 12; i++) {
+        const a = -Math.PI / 2 + (i * Math.PI) / 6;
+        c.beginPath();
+        c.moveTo(0, 0);
+        c.arc(0, 0, R * 0.82, a, a + Math.PI / 6);
+        c.closePath();
+        c.fillStyle = i % 2 ? "#17191f" : "#d92f31";
+        c.fill();
+        c.strokeStyle = "#f4c65b";
+        c.lineWidth = 2;
+        c.stroke();
+        c.save();
+        c.rotate(a + Math.PI / 12);
+        c.translate(R * 0.66, 0);
+        c.rotate(Math.PI / 2);
+        c.fillStyle = "#fff4c7";
+        c.font = `800 ${size * 0.055}px sans-serif`;
+        c.textAlign = "center";
+        c.fillText(String(i + 1), 0, size * 0.02);
+        c.restore();
+      }
+      c.beginPath();
+      c.arc(0, 0, R * 0.35, 0, Math.PI * 2);
+      c.fillStyle = "#7b451f";
+      c.fill();
+      c.strokeStyle = "#f7c85b";
+      c.lineWidth = 5;
+      c.stroke();
+      c.beginPath();
+      c.arc(0, 0, R * 0.13, 0, Math.PI * 2);
+      c.fillStyle = "#f4b52c";
+      c.fill();
+      c.restore();
+      let ballAngle = -Math.PI / 2;
+      if (spin) {
+        const outer = -((time - start.current) * 0.0055 * (1 - ease * 0.8));
+        const target = result
+          ? -Math.PI / 2 + ((result - 1) * Math.PI) / 6 + Math.PI / 12 + wheel
+          : 0;
+        ballAngle =
+          t < 0.87
+            ? outer
+            : outer + (target - outer) * Math.min(1, (t - 0.87) / 0.13);
+      } else if (result)
+        ballAngle = -Math.PI / 2 + ((result - 1) * Math.PI) / 6 + Math.PI / 12;
+      const radius =
+        R * (spin ? 0.93 - 0.2 * Math.max(0, (t - 0.55) / 0.45) : 0.73);
+      c.beginPath();
+      c.arc(
+        mid + Math.cos(ballAngle) * radius,
+        mid + Math.sin(ballAngle) * radius,
+        size * 0.022,
+        0,
+        Math.PI * 2,
+      );
+      c.fillStyle = "white";
+      c.shadowColor = "#0008";
+      c.shadowBlur = 7;
+      c.fill();
+      c.shadowBlur = 0;
+      if (spin && t < 1) raf.current = requestAnimationFrame(draw);
+    },
+    [spin, result],
+  );
+  useEffect(() => {
+    start.current = performance.now();
+    raf.current = requestAnimationFrame(draw);
+    return () => cancelAnimationFrame(raf.current);
+  }, [draw]);
+  return (
+    <canvas ref={ref} className="wheel" aria-label="1부터 12까지의 룰렛 원판" />
+  );
+}
+function App() {
+  const [player, setPlayer] = useState<PlayerRoulette>(),
+    [bets, setBets] = useState<Bet[]>([]),
+    [chip, setChip] = useState<(typeof chips)[number]>(1e6),
+    [spinning, setSpinning] = useState(false),
+    [result, setResult] = useState<number | null>(null),
+    [notice, setNotice] = useState("베팅 칩과 위치를 선택해 주세요."),
+    [allHistory, setAllHistory] = useState(false),
+    [sound, setSound] = useState(true);
+  useEffect(() => {
+    api<PlayerState>("/api/games/roulette/state")
+      .then((x) => setPlayer(x.player))
+      .catch((e) => setNotice(e.message));
+  }, []);
+  const available =
+    (player?.balance ?? 0) - bets.reduce((s, b) => s + b.amount, 0);
+  const betAt = (type: BetType, target: BetTarget) =>
+    bets.find((placed) => key(placed.type, placed.target) === key(type, target));
+  const betChip = (type: BetType, target: BetTarget) => {
+    const placed = betAt(type, target);
+    return placed ? (
+      <span
+        className="placed-chip"
+        aria-label={`${String(target)}에 ${fmt(placed.amount)} DC 베팅됨`}
+      >
+        {short(placed.amount)}
+      </span>
+    ) : null;
+  };
+  function bet(type: BetType, target: BetTarget) {
+    if (spinning || !player) return;
+    const amount = chip === "ALL_IN" ? available : chip;
+    if (amount <= 0) return setNotice("보유 포인트가 부족합니다.");
+    const i = bets.findIndex(
+      (b) => key(b.type, b.target) === key(type, target),
+    );
+    if (i < 0 && bets.length >= 3)
+      return setNotice("한 라운드에는 최대 3곳까지 베팅할 수 있어요.");
+    if (amount > available) return setNotice("보유 포인트가 부족합니다.");
+    const next = [...bets];
+    if (i >= 0) next[i] = { ...next[i], amount: next[i].amount + amount };
+    else next.push({ type, target, amount });
+    setBets(next);
+    setNotice(`${String(target)}에 ${short(amount)} DC 베팅했습니다.`);
+  }
+  function remove(i: number) {
+    if (!spinning) setBets(bets.filter((_, x) => x !== i));
+  }
+  async function spin() {
+    if (spinning || !bets.length)
+      return setNotice("베팅을 먼저 선택해 주세요.");
+    setSpinning(true);
+    setNotice("룰렛이 돌아가는 중...");
+    try {
+      const data = await api<SpinResponse>("/api/games/roulette/spin", {
+        method: "POST",
+        body: JSON.stringify({ requestId: crypto.randomUUID(), bets }),
+      });
+      setResult(data.result.number);
+      await new Promise((r) =>
+        setTimeout(
+          r,
+          matchMedia("(prefers-reduced-motion: reduce)").matches ? 1000 : 6000,
+        ),
+      );
+      const state = await api<PlayerState>("/api/games/roulette/state");
+      setPlayer(state.player);
+      setBets([]);
+      setNotice(
+        `${data.result.number} ${data.result.color} · ${data.profit >= 0 ? "+" : ""}${fmt(data.profit)} DC${data.streakBonus ? ` · 연승 보너스 +${fmt(data.streakBonus)}` : ""}`,
+      );
+    } catch (e) {
+      setNotice((e as Error).message);
+    } finally {
+      setSpinning(false);
+    }
+  }
+  async function bailout() {
+    try {
+      const x = await api<{ player: PlayerRoulette }>(
+        "/api/games/roulette/bailout",
+        { method: "POST" },
+      );
+      setPlayer(x.player);
+      setNotice("재도전 지원금 5억 DC를 받았습니다.");
+    } catch (e) {
+      setNotice((e as Error).message);
+    }
+  }
+  if (!player)
+    return (
+      <main className="loading">
+        <div>🦆</div>
+        <b>DUCK ROULETTE</b>
+        <p>{notice}</p>
+      </main>
+    );
+  const history = allHistory ? player.history : player.history.slice(0, 6),
+    rate = player.today.plays
+      ? Math.round((player.today.wins / player.today.plays) * 1000) / 10
+      : 0;
+  return (
+    <>
+      <header className="site-header">
+        <div className="brand">
+          🦆 <b>Go-Go! Duck</b>
+        </div>
+        <div className="account">
+          🍗 마루 <span>🪙 {fmt(player.balance)} DC</span>
+        </div>
+      </header>
+      <main className="page">
+        <aside className="left">
+          <section className="card profile">
+            <h3>내 정보</h3>
+            <div className="avatar">🍗</div>
+            <b>마루</b>
+            <small>보유 포인트</small>
+            <strong>{fmt(player.balance)} DC</strong>
+            <button>＋ 충전하기</button>
+          </section>
+          <section className="card missions">
+            <h3>오늘의 미션</h3>
+            <p>
+              룰렛 3회 플레이 <b>{Math.min(player.today.plays, 3)} / 3</b>
+            </p>
+            <progress value={Math.min(player.today.plays, 3)} max="3" />
+            <p>
+              룰렛 1회 적중 <b>{Math.min(player.today.wins, 1)} / 1</b>
+            </p>
+            <progress value={Math.min(player.today.wins, 1)} max="1" />
+          </section>
+          <section className="jackpot">
+            👑<b>1,000,000,000 DC</b>
+            <span>행운의 주인공이 되어보세요!</span>
+          </section>
+        </aside>
+        <div className="center">
+          <section className="card game-card">
+            <div className="title">
+              <div>
+                <span>🦆</span>
+                <h1>
+                  DUCK <em>ROULETTE</em>
+                </h1>
+                <p>굴러가는 구슬을 보며 결과를 예측해보세요!</p>
+              </div>
+              <button
+                className="sound"
+                onClick={() => setSound(!sound)}
+                aria-label="효과음 켜기 또는 끄기"
+              >
+                {sound ? "🔊" : "🔇"}
+              </button>
+            </div>
+            <div className="mobile-balance">
+              🪙 {fmt(player.balance)} DC <b>🔥 {player.streak.current}연승</b>
+            </div>
+            <Wheel spin={spinning} result={result} />
+            <div className="notice" aria-live="polite">
+              {notice}
+            </div>
+            <h2>
+              <i>1</i> 베팅 칩 선택
+            </h2>
+            <div className="chips">
+              {chips.map((c, i) => (
+                <button
+                  key={String(c)}
+                  disabled={spinning || (c === "ALL_IN" && available === 0)}
+                  className={`${chip === c ? "active" : ""} c${i}`}
+                  onClick={() => setChip(c)}
+                >
+                  {c === "ALL_IN" ? "올인" : short(c)}
+                </button>
+              ))}
+            </div>
+            <h2>
+              <i>2</i> 베팅 위치 선택 <small>최대 3곳</small>
+            </h2>
+            <div className="numbers">
+              {Array.from({ length: 12 }, (_, i) => i + 1).map((n) => (
+                <button
+                  key={n}
+                  disabled={spinning}
+                  className={won(n)}
+                  onClick={() => bet("NUMBER", n)}
+                >
+                  <span className="bet-label">{n}</span>
+                  {betChip("NUMBER", n)}
+                </button>
+              ))}
+            </div>
+            <div className="outside">
+              {[
+                ["COLOR", "RED", "RED"],
+                ["COLOR", "BLACK", "BLACK"],
+                ["PARITY", "ODD", "홀수 (ODD)"],
+                ["PARITY", "EVEN", "짝수 (EVEN)"],
+                ["RANGE", "LOW", "1 ~ 6 (LOW)"],
+                ["RANGE", "HIGH", "7 ~ 12 (HIGH)"],
+              ].map(([t, x, label]) => (
+                <button
+                  key={x}
+                  disabled={spinning}
+                  className={String(x).toLowerCase()}
+                  onClick={() => bet(t as BetType, x as BetTarget)}
+                >
+                  <span className="bet-label">
+                    {label}
+                    <small>×2</small>
+                  </span>
+                  {betChip(t as BetType, x as BetTarget)}
+                </button>
+              ))}
+            </div>
+            <div className="my-bets">
+              <b>내 베팅 {bets.length} / 3</b>
+              <button
+                disabled={spinning || !bets.length}
+                onClick={() => setBets([])}
+              >
+                선택 초기화
+              </button>
+              {bets.map((b, i) => (
+                <div key={key(b.type, b.target)}>
+                  <span>{String(b.target)}</span>
+                  <strong>{fmt(b.amount)} DC</strong>
+                  <button
+                    onClick={() => remove(i)}
+                    aria-label={`${String(b.target)} 베팅 취소`}
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+            </div>
+            <button
+              className="spin"
+              disabled={spinning || !bets.length}
+              onClick={spin}
+            >
+              🦆 {spinning ? "룰렛이 돌아가는 중..." : "SPIN! 룰렛 돌리기"}
+            </button>
+          </section>
+          <section className="card history">
+            <h2>
+              최근 게임 결과 <small>최근 6개</small>
+            </h2>
+            {history.length ? (
+              <div className="history-list">
+                {history.map((h) => (
+                  <article key={h.id}>
+                    <b className={won(h.result.number)}>{h.result.number}</b>
+                    <span>
+                      {h.bets.map((b) => String(b.target)).join(" + ")}
+                    </span>
+                    <strong className={h.profit >= 0 ? "gain" : "loss"}>
+                      {h.profit >= 0 ? "+" : ""}
+                      {fmt(h.profit)} DC
+                    </strong>
+                  </article>
+                ))}
+              </div>
+            ) : (
+              <p className="empty">아직 게임 기록이 없습니다.</p>
+            )}{" "}
+            {player.history.length > 6 && (
+              <button
+                className="more"
+                onClick={() => setAllHistory(!allHistory)}
+              >
+                {allHistory ? "접기" : "전체 기록 보기"}
+              </button>
+            )}
+          </section>
+        </div>
+        <aside className="right">
+          <section className="card stats">
+            <h3>오늘 게임 통계</h3>
+            <dl>
+              <div>
+                <dt>플레이</dt>
+                <dd>{player.today.plays}회</dd>
+              </div>
+              <div>
+                <dt>승 / 패 / 무</dt>
+                <dd>
+                  {player.today.wins} / {player.today.losses} /{" "}
+                  {player.today.draws}
+                </dd>
+              </div>
+              <div>
+                <dt>승률</dt>
+                <dd>{rate}%</dd>
+              </div>
+              <div>
+                <dt>현재 / 최고 연승</dt>
+                <dd>
+                  {player.streak.current} / {player.streak.best}
+                </dd>
+              </div>
+              <div>
+                <dt>오늘 손익</dt>
+                <dd className={player.today.profit >= 0 ? "gain" : "loss"}>
+                  {fmt(player.today.profit)} DC
+                </dd>
+              </div>
+            </dl>
+          </section>
+          <section className="card streak">
+            <h3>연승 보너스</h3>
+            <p>
+              🔥 3연승 <b>+100만</b>
+            </p>
+            <p>
+              🥉 5연승 <b>+500만</b>
+            </p>
+            <p>
+              🏆 7연승 <b>+1,000만</b>
+            </p>
+          </section>
+          {player.balance === 0 && !bets.length && (
+            <section className="card bailout">
+              <h3>포인트가 모두 소진되었습니다.</h3>
+              <p>하루 한 번 다시 도전할 수 있어요.</p>
+              <button onClick={bailout}>재도전 지원금 5억 받기</button>
+            </section>
+          )}
+          <section className="card rules">
+            <h3>게임 안내</h3>
+            <p>• 숫자 1~12는 ×10</p>
+            <p>• 색상·홀짝·구간은 ×2</p>
+            <p>• 한 라운드 최대 3곳</p>
+            <p>• 0은 없습니다.</p>
+            <p>• 결과는 서버에서 공정하게 결정됩니다.</p>
+          </section>
+        </aside>
+      </main>
+      <nav>
+        <span>
+          ⌂<small>홈</small>
+        </span>
+        <span>
+          📣<small>게시판</small>
+        </span>
+        <span>
+          ♔<small>랭킹</small>
+        </span>
+        <span>
+          ▣<small>상점</small>
+        </span>
+        <span className="selected">
+          ♟<small>게임</small>
+        </span>
+      </nav>
+    </>
+  );
+}
+createRoot(document.getElementById("root")!).render(<App />);
